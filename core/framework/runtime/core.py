@@ -110,7 +110,9 @@ class Runtime:
             if self._current_run is None:
                 # Gracefully handle case where run was already ended or never started
                 # This can happen during exception handling cascades
-                logger.warning("end_run called but no run in progress (already ended or never started)")
+                logger.warning(
+                    "end_run called but no run in progress (already ended or never started)"
+                )
                 return
 
             status = RunStatus.COMPLETED if success else RunStatus.FAILED

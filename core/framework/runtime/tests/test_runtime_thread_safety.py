@@ -27,10 +27,10 @@ def test_concurrent_start_and_end_run(runtime):
     Test that multiple threads calling start_run and end_run concurrently
     do not raise exceptions or corrupt state.
     """
+
     def start_and_end_run(thread_id):
         run_id = runtime.start_run(
-            goal_id=f"goal_{thread_id}",
-            goal_description=f"Test goal {thread_id}"
+            goal_id=f"goal_{thread_id}", goal_description=f"Test goal {thread_id}"
         )
         # Verify run was started
         assert run_id.startswith("run_")
@@ -67,7 +67,7 @@ def test_concurrent_decide_unique_ids(runtime):
                 {"id": "option_b", "description": "Option B"},
             ],
             chosen="option_a",
-            reasoning=f"Reason from thread {thread_id}"
+            reasoning=f"Reason from thread {thread_id}",
         )
         with lock:
             decision_ids.append(decision_id)
@@ -76,7 +76,9 @@ def test_concurrent_decide_unique_ids(runtime):
     # Run multiple threads concurrently
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(make_decision, i) for i in range(10)]
-        results = [f.result() for f in futures]
+        # Wait for all threads to complete
+        for f in futures:
+            f.result()
 
     # Verify all decision IDs are unique
     assert len(decision_ids) == 10
@@ -98,14 +100,14 @@ def test_concurrent_decide_and_record_outcome(runtime):
             intent=f"Intent {thread_id}",
             options=[{"id": "opt1", "description": "Option 1"}],
             chosen="opt1",
-            reasoning=f"Reasoning {thread_id}"
+            reasoning=f"Reasoning {thread_id}",
         )
         # Record outcome
         runtime.record_outcome(
             decision_id=decision_id,
             success=True,
             result=f"Result {thread_id}",
-            summary=f"Summary {thread_id}"
+            summary=f"Summary {thread_id}",
         )
         return decision_id
 
@@ -136,7 +138,7 @@ def test_decide_without_run_logs_error(runtime):
             intent="Test intent",
             options=[{"id": "opt1", "description": "Option 1"}],
             chosen="opt1",
-            reasoning="Test reasoning"
+            reasoning="Test reasoning",
         )
 
         # Verify empty string returned
@@ -154,11 +156,7 @@ def test_record_outcome_without_run_logs_error(runtime):
     (not warning).
     """
     with patch("framework.runtime.core.logger") as mock_logger:
-        runtime.record_outcome(
-            decision_id="dec_12345678",
-            success=True,
-            result="test result"
-        )
+        runtime.record_outcome(decision_id="dec_12345678", success=True, result="test result")
 
         # Verify logger.error was called (not warning)
         mock_logger.error.assert_called_once()
@@ -173,10 +171,7 @@ def test_report_problem_without_run_logs_error(runtime):
     (not warning) and returns an empty string.
     """
     with patch("framework.runtime.core.logger") as mock_logger:
-        problem_id = runtime.report_problem(
-            severity="critical",
-            description="Test problem"
-        )
+        problem_id = runtime.report_problem(severity="critical", description="Test problem")
 
         # Verify empty string returned
         assert problem_id == ""
@@ -200,6 +195,7 @@ def test_set_node_thread_safety(runtime):
         runtime.set_node(node_id)
         # Give other threads a chance to interleave
         import time
+
         time.sleep(0.001)
 
     # Run multiple threads setting different nodes
@@ -271,7 +267,7 @@ def test_decide_and_execute_does_not_deadlock(runtime):
         options=[{"id": "opt1", "description": "Option 1"}],
         chosen="opt1",
         reasoning="Test reasoning",
-        executor=executor
+        executor=executor,
     )
 
     assert decision_id.startswith("dec_")
