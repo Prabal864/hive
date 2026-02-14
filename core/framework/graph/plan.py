@@ -17,6 +17,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class CircularDependencyError(ValueError):
+    """Raised when circular dependencies are detected in a plan."""
+
+    def __init__(self, cycle: list[str]):
+        self.cycle = cycle
+        cycle_str = " -> ".join(cycle)
+        super().__init__(
+            f"Circular dependency detected in plan steps: {cycle_str}"
+        )
+
+
 class ActionType(str, Enum):
     """Types of actions a PlanStep can perform."""
 
@@ -339,7 +350,7 @@ class Plan(BaseModel):
             )
             steps.append(step)
 
-        return cls(
+        plan = cls(
             id=data.get("id", "plan"),
             goal_id=data.get("goal_id", ""),
             description=data.get("description", ""),
@@ -347,6 +358,59 @@ class Plan(BaseModel):
             context=data.get("context", {}),
             revision=data.get("revision", 1),
         )
+        plan.validate_dependencies()
+        return plan
+
+    def validate_dependencies(self) -> None:
+        """Validate that step dependencies form a DAG (no cycles).
+
+        Uses DFS-based cycle detection. Raises CircularDependencyError
+        if any circular dependencies are found.
+
+        Also validates that all referenced dependency IDs actually exist
+        as step IDs in the plan.
+        """
+        step_ids = {s.id for s in self.steps}
+        deps_map = {s.id: s.dependencies for s in self.steps}
+
+        # Check for references to non-existent steps
+        for step_id, deps in deps_map.items():
+            for dep in deps:
+                if dep not in step_ids:
+                    raise ValueError(
+                        f"Step '{step_id}' depends on unknown step '{dep}'"
+                    )
+
+        # DFS cycle detection
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {sid: WHITE for sid in step_ids}
+        parent = {}
+
+        def dfs(node: str) -> list[str] | None:
+            color[node] = GRAY
+            for dep in deps_map.get(node, []):
+                if color[dep] == GRAY:
+                    # Found cycle - reconstruct it
+                    cycle = [dep, node]
+                    current = node
+                    while parent.get(current) != dep and current in parent:
+                        current = parent[current]
+                        cycle.append(current)
+                    cycle.reverse()
+                    return cycle
+                if color[dep] == WHITE:
+                    parent[dep] = node
+                    result = dfs(dep)
+                    if result is not None:
+                        return result
+            color[node] = BLACK
+            return None
+
+        for step_id in step_ids:
+            if color[step_id] == WHITE:
+                cycle = dfs(step_id)
+                if cycle is not None:
+                    raise CircularDependencyError(cycle)
 
     def get_step(self, step_id: str) -> PlanStep | None:
         """Get a step by ID."""

@@ -153,6 +153,9 @@ class FlexibleGraphExecutor:
         total_latency = 0
 
         try:
+            # Validate plan dependencies before execution
+            plan.validate_dependencies()
+
             while steps_executed < self.config.max_total_steps:
                 # Get next ready steps
                 ready_steps = plan.get_ready_steps()
