@@ -383,7 +383,7 @@ class Plan(BaseModel):
 
         # DFS cycle detection
         WHITE, GRAY, BLACK = 0, 1, 2
-        color = {sid: WHITE for sid in step_ids}
+        color = dict.fromkeys(step_ids, WHITE)
         parent = {}
 
         def dfs(node: str) -> list[str] | None:
