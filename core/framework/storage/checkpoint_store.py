@@ -16,6 +16,16 @@ from framework.utils.io import atomic_write
 logger = logging.getLogger(__name__)
 
 
+class CheckpointCorruptionError(Exception):
+    """Raised when a checkpoint file exists but fails to parse or validate.
+
+    Distinct from "not found" (a normal, expected condition) so callers can
+    tell the two apart instead of both collapsing to a silent ``None`` —
+    resuming a session must not mistake "checkpoint is corrupted" for
+    "there was never a checkpoint" and quietly restart from scratch.
+    """
+
+
 class CheckpointStore:
     """
     Manages checkpoint storage with atomic writes.
@@ -39,7 +49,22 @@ class CheckpointStore:
         self.base_path = Path(base_path)
         self.checkpoints_dir = self.base_path / "checkpoints"
         self.index_path = self.checkpoints_dir / "index.json"
+        self._corrupted_dir = self.checkpoints_dir / ".corrupted"
         self._index_lock = asyncio.Lock()
+
+    def _quarantine(self, path: Path) -> None:
+        """Move a corrupted file out of checkpoints/ so it stops blocking
+        every future load and cluttering the directory. Best-effort: a
+        failure here must not mask the original corruption error.
+        """
+        try:
+            self._corrupted_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            dest = self._corrupted_dir / f"{path.stem}_{timestamp}{path.suffix}"
+            path.rename(dest)
+            logger.error(f"Quarantined corrupted file {path} -> {dest}")
+        except OSError as move_err:
+            logger.error(f"Failed to quarantine corrupted file {path}: {move_err}")
 
     async def save_checkpoint(self, checkpoint: Checkpoint) -> None:
         """
@@ -85,6 +110,12 @@ class CheckpointStore:
 
         Returns:
             Checkpoint object, or None if not found
+
+        Raises:
+            CheckpointCorruptionError: If the checkpoint file exists but is
+                corrupted (truncated, invalid JSON, schema mismatch). The
+                file is quarantined into checkpoints/.corrupted/ before this
+                is raised, so a retry won't trip over the same bad file.
         """
 
         def _read(checkpoint_id: str) -> Checkpoint | None:
@@ -97,8 +128,9 @@ class CheckpointStore:
             try:
                 return Checkpoint.model_validate_json(checkpoint_path.read_text(encoding="utf-8"))
             except Exception as e:
-                logger.error(f"Failed to load checkpoint {checkpoint_id}: {e}")
-                return None
+                logger.error(f"Checkpoint {checkpoint_id} is corrupted: {e}")
+                self._quarantine(checkpoint_path)
+                raise CheckpointCorruptionError(f"Checkpoint {checkpoint_id} is corrupted: {e}") from e
 
         # Load index to get checkpoint ID if not provided
         if checkpoint_id is None:
@@ -115,7 +147,15 @@ class CheckpointStore:
         Load checkpoint index.
 
         Returns:
-            CheckpointIndex or None if not found
+            CheckpointIndex or None if not found or corrupted.
+
+            Unlike ``load_checkpoint``, a corrupted index does not raise:
+            index rebuilding (``_update_index_add``) already treats a
+            missing index as "start a fresh one", and that self-healing
+            path must keep working even when the old index was corrupted —
+            otherwise a single bad index file would permanently block every
+            future checkpoint save for the session. The corrupted file is
+            still quarantined and logged so the failure isn't silent.
         """
 
         def _read() -> CheckpointIndex | None:
@@ -125,7 +165,8 @@ class CheckpointStore:
             try:
                 return CheckpointIndex.model_validate_json(self.index_path.read_text(encoding="utf-8"))
             except Exception as e:
-                logger.error(f"Failed to load checkpoint index: {e}")
+                logger.error(f"Checkpoint index is corrupted: {e}")
+                self._quarantine(self.index_path)
                 return None
 
         return await asyncio.to_thread(_read)
