@@ -36,9 +36,20 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx
+if TYPE_CHECKING:
+    import httpx
+
+# httpx is imported lazily (inside _get_client / _request_with_retry, below)
+# rather than at module level. Importing this module — which happens as
+# part of the framework package's normal import chain — otherwise pulls in
+# httpx unconditionally even for callers who never touch Aden credentials.
+# httpx's optional CLI extra (rich + pygments) is a real transitive
+# dependency here via fastmcp, so `import httpx` eagerly loads that whole
+# syntax-highlighting stack too: ~0.5s of the framework package's ~2s
+# import time, paid on every startup regardless of whether Aden credentials
+# are ever used. See #7323.
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +275,8 @@ class AdenCredentialClient:
         return _json.loads(response.content.decode("utf-8-sig"))
 
     def _get_client(self) -> httpx.Client:
+        import httpx
+
         if self._client is None:
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
@@ -287,6 +300,8 @@ class AdenCredentialClient:
         **kwargs: Any,
     ) -> httpx.Response:
         """Make a request with retry logic."""
+        import httpx
+
         client = self._get_client()
         last_error: Exception | None = None
 
