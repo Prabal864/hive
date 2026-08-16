@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tarfile
 import time
@@ -155,6 +156,33 @@ def test_crash_resume_converges() -> None:
     assert not (wdir / "data").exists()
     assert json.loads((wdir / "result.json").read_text(encoding="utf-8")) == tombstone
     assert report.bytes_freed > 0
+
+
+def test_crash_resume_converges_when_conversations_already_removed() -> None:
+    """Regression: a crash between the conversations/ and data/ deletion
+    steps must not be mistaken for "fully cleaned" just because
+    conversations/ alone is gone — data/ and stray files must still be
+    swept on the next run, not left behind forever."""
+    wdir = _build_worker()
+    tombstone = {"status": "completed", "summary": "s", "_janitor": {"pruned_at": "x"}}
+    (wdir / "result.json").write_text(json.dumps(tombstone), encoding="utf-8")
+    shutil.rmtree(wdir / "conversations")
+    _age_tree(wdir, 30)
+
+    assert (wdir / "data").exists()
+    assert (wdir / "reminder_state.json").exists()
+
+    report = deep_clean_worker("c1", _WID, wdir, disposer=DeleteDisposer(), manifest=Manifest())
+
+    assert not (wdir / "data").exists(), "data/ must not be left behind forever"
+    assert not (wdir / "reminder_state.json").exists(), "stray files must not be left behind forever"
+    assert not (wdir / "os").exists()
+    assert json.loads((wdir / "result.json").read_text(encoding="utf-8")) == tombstone
+    assert report.bytes_freed > 0
+
+    # A further rerun now that everything is actually gone must still be a no-op.
+    report2 = deep_clean_worker("c1", _WID, wdir, disposer=DeleteDisposer(), manifest=Manifest())
+    assert report2.bytes_freed == 0
 
 
 def test_recent_worker_is_skipped() -> None:

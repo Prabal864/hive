@@ -642,6 +642,22 @@ def _delete_message_index_subtrees(session_id: str, disposer: Disposer, manifest
     return freed
 
 
+def _worker_deep_clean_complete(wdir: Path) -> bool:
+    """True only if every target the deletion loop below is responsible for
+    (conversations/, data/, and any non-keep stray file) is already gone.
+
+    The loop processes conversations/, then data/, then stray files as
+    separate steps; a crash between those steps must not be mistaken for
+    "fully cleaned" just because conversations/ alone is gone.
+    """
+    if (wdir / "conversations").exists() or (wdir / "data").exists():
+        return False
+    try:
+        return not any(p.is_file() and p.name not in _WORKER_KEEP_FILES for p in wdir.iterdir())
+    except OSError:
+        return False
+
+
 def deep_clean_worker(
     colony_id: str,
     worker_id: str,
@@ -660,7 +676,7 @@ def deep_clean_worker(
     result_path = wdir / "result.json"
 
     tombstone_exists = result_path.exists()
-    already_cleaned = tombstone_exists and not (wdir / "conversations").exists()
+    already_cleaned = tombstone_exists and _worker_deep_clean_complete(wdir)
     if already_cleaned:
         return report
 
