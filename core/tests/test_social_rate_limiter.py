@@ -223,6 +223,76 @@ def test_env_var_weekly_clamped(limiter):
     assert result == 500  # weekly_max ceiling
 
 
+# ── configuration.json overrides ─────────────────────────────────────
+
+
+def test_config_override_raises_limit(limiter):
+    with mock.patch(
+        "framework.rate_limiter._get_config_overrides",
+        return_value={"linkedin.invite.daily": 20},
+    ):
+        result = _resolve_limit("linkedin", "invite", "daily")
+    assert result == 20
+
+
+def test_config_override_clamped_to_ceiling(limiter):
+    """Regression: configuration.json overrides must respect the hard
+    ceiling just like env-var overrides — previously only the env-var
+    branch called _clamp(), so a config-file value could sail straight
+    past daily_max/weekly_max."""
+    with mock.patch(
+        "framework.rate_limiter._get_config_overrides",
+        return_value={"linkedin.invite.daily": 999999},
+    ):
+        result = _resolve_limit("linkedin", "invite", "daily")
+    assert result == 125  # daily_max ceiling, not 999999
+
+
+def test_config_override_clamped_enforced_by_check(limiter):
+    """The bug wasn't just in _resolve_limit's return value — check()
+    must actually block once the (clamped) ceiling is reached, even
+    though configuration.json asked for a far higher limit."""
+    con = sqlite3.connect(str(limiter._db_path))
+    now = time.time()
+    for i in range(125):
+        # 600s spacing keeps all 125 timestamps within the 24h daily
+        # window (125 * 600s = 75000s < 86400s).
+        con.execute(
+            "INSERT INTO actions (platform, account_id, action_type, performed_at) VALUES (?, ?, ?, ?)",
+            ("linkedin", "acct1", "invite", now - 600 * (i + 1)),
+        )
+    con.commit()
+    con.close()
+
+    with mock.patch(
+        "framework.rate_limiter._get_config_overrides",
+        return_value={"linkedin.invite.daily": 999999},
+    ):
+        result = limiter.check("linkedin", "acct1", "invite")
+
+    assert result["allowed"] is False
+    assert result["reason"] == "daily_limit_reached"
+    assert result["daily_limit"] == 125
+
+
+def test_config_override_weekly_clamped(limiter):
+    with mock.patch(
+        "framework.rate_limiter._get_config_overrides",
+        return_value={"linkedin.invite.weekly": 999999},
+    ):
+        result = _resolve_limit("linkedin", "invite", "weekly")
+    assert result == 500  # weekly_max ceiling
+
+
+def test_config_override_invalid_falls_back_to_default(limiter):
+    with mock.patch(
+        "framework.rate_limiter._get_config_overrides",
+        return_value={"linkedin.invite.daily": "not_a_number"},
+    ):
+        result = _resolve_limit("linkedin", "invite", "daily")
+    assert result == 50  # daily_default
+
+
 # ── get_daily_counts / get_weekly_counts ─────────────────────────────
 
 

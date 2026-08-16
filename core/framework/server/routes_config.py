@@ -1017,7 +1017,7 @@ async def handle_update_rate_limits(request: web.Request) -> web.Response:
     if not isinstance(incoming, dict):
         return web.json_response({"error": "limits must be an object"}, status=400)
 
-    # Validate each key. Values above the ceiling are allowed but flagged.
+    # Validate each key. Values above the ceiling are clamped down and flagged.
     cleaned: dict[str, int] = {}
     warnings: list[str] = []
     for key, value in incoming.items():
@@ -1039,8 +1039,9 @@ async def handle_update_rate_limits(request: web.Request) -> web.Response:
             val = 1
         if ceiling is not None and val > ceiling:
             warnings.append(
-                f"{platform}.{action}.{window}={val} exceeds recommended max of {ceiling}. High values increase the risk of account bans."
+                f"{platform}.{action}.{window}={val} exceeds hard max of {ceiling}; clamped to {ceiling}. High values increase the risk of account bans."
             )
+            val = ceiling
         cleaned[key] = val
 
     config = get_hive_config()
