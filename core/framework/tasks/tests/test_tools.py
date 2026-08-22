@@ -452,6 +452,38 @@ async def test_completion_suffix_skips_blocked_pending(
 
 
 @pytest.mark.asyncio
+async def test_task_list_and_update_after_blocker_archived(
+    registry_with_session_tools: ToolRegistry,
+) -> None:
+    reg = registry_with_session_tools
+    session_id = "sess_1"
+    token = _set_ctx(agent_id="agent_a", session_id=session_id)
+    try:
+        await _create_one(reg, subject="prereq")
+        await _create_one(reg, subject="dep")
+        await _invoke(reg, "task_update", id=2, add_blocked_by=[1])
+
+        # Complete and archive task 1
+        await _invoke(reg, "task_update", id=1, status="completed")
+        await _invoke(reg, "task_update", id=1, status="archived")
+
+        # 1. task_list without include_archived should not show [blocked by #1]
+        list_res = await _invoke(reg, "task_list")
+        list_body = json.loads(list_res.content)
+        assert list_body["count"] == 1
+        assert "[blocked by" not in list_body["lines"][0]
+
+        # 2. task_update on another task should suggest #2 as next pending
+        await _create_one(reg, subject="unrelated")
+        await _invoke(reg, "task_update", id=3, status="completed")
+        upd_res = await _invoke(reg, "task_update", id=3, status="completed")
+        upd_body = json.loads(upd_res.content)
+        assert 'Next pending: #2 — "dep"' in upd_body["message"]
+    finally:
+        ToolRegistry.reset_execution_context(token)
+
+
+@pytest.mark.asyncio
 async def test_hook_blocks_task_created(
     registry_with_session_tools: ToolRegistry,
 ) -> None:

@@ -57,6 +57,19 @@ def is_task_idle(record: TaskRecord, *, now: float | None = None) -> bool:
     return current - (record.updated_at or 0.0) > IDLE_TASK_THRESHOLD_SECONDS
 
 
+def is_task_completed(record: TaskRecord) -> bool:
+    """True when a task is completed, or archived after having been completed.
+
+    Used by dependency/blocker resolution so that archiving finished work
+    does not cause dependent tasks to become permanently blocked.
+    """
+    if record.status is TaskStatus.COMPLETED:
+        return True
+    if record.status is TaskStatus.ARCHIVED and record.metadata.get("archived_from") == TaskStatus.COMPLETED.value:
+        return True
+    return False
+
+
 class TaskRecord(BaseModel):
     """One unit of work tracked by an agent."""
 

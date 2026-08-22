@@ -32,7 +32,7 @@ from framework.tasks.hooks import (
     BlockingHookError,
     run_task_hooks,
 )
-from framework.tasks.models import TaskRecord, TaskStatus
+from framework.tasks.models import TaskRecord, TaskStatus, is_task_completed
 from framework.tasks.store import (
     _UNSET_SENTINEL as _UNSET,  # re-export for clarity
     TaskStore,
@@ -592,7 +592,7 @@ def _make_update_executor(store: TaskStore):
         message = f"Task #{task_id} updated. Fields changed: {', '.join(fields) or '(none)'}."
         if status_enum == TaskStatus.COMPLETED and "status" in fields:
             others = await store.list_tasks(session_id)
-            completed_ids = {r.id for r in others if r.status == TaskStatus.COMPLETED}
+            completed_ids = {r.id for r in others if is_task_completed(r)}
             next_pending = next(
                 (r for r in others if r.status == TaskStatus.PENDING and not [b for b in r.blocked_by if b not in completed_ids]),
                 None,
@@ -642,14 +642,16 @@ def _make_list_executor(store: TaskStore):
         # Filtering here (not in store.list_tasks) keeps the REST snapshot
         # serving archived tasks to the panel's History view.
         include_archived = bool(inputs.get("include_archived"))
-        records = await store.list_tasks(session_id)
-        if not include_archived:
-            records = [r for r in records if r.status is not TaskStatus.ARCHIVED]
+        all_records = await store.list_tasks(session_id)
+        # Filter resolved blockers from the rendering so a completed
+        # (or completed-then-archived) blocker disappears from blocked_by.
+        completed_ids = {r.id for r in all_records if is_task_completed(r)}
+        if include_archived:
+            records = all_records
+        else:
+            records = [r for r in all_records if r.status is not TaskStatus.ARCHIVED]
         meta = await store.get_meta(session_id)
         goal = meta.goal if meta is not None else None
-        # Filter resolved blockers from the rendering so a completed
-        # blocker disappears from blocked_by.
-        completed_ids = {r.id for r in records if r.status == TaskStatus.COMPLETED}
         rendered: list[str] = []
         # Lead with the stored goal so a queen scanning task_list before
         # deciding whether a new batch is a pivot has the anchor in view.

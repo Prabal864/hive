@@ -365,6 +365,23 @@ async def test_claim_blocked(store: TaskStore, session_id: str) -> None:
     assert a.id in result.by
 
 
+@pytest.mark.asyncio
+async def test_claim_after_blocker_archived_completed(store: TaskStore, session_id: str) -> None:
+    await store.ensure_task_list(session_id)
+    a = await store.create_task(session_id, subject="prereq")
+    b = await store.create_task(session_id, subject="dep")
+    await store.update_task(session_id, b.id, add_blocked_by=[a.id])
+
+    # Complete and archive blocker 'a'
+    await store.update_task(session_id, a.id, status=TaskStatus.COMPLETED)
+    await store.archive_completed_tasks(session_id)
+
+    # b should now be claimable since blocker 'a' was completed before archive
+    result = await store.claim_task_with_busy_check(session_id, b.id, "agent_a")
+    assert isinstance(result, ClaimOk)
+    assert result.record.owner == "agent_a"
+
+
 # ---------------------------------------------------------------------------
 # Meta lifecycle: ensure_task_list is idempotent
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ from framework.tasks.models import (
     TaskListMeta,
     TaskRecord,
     TaskStatus,
+    is_task_completed,
     is_task_idle,
 )
 from framework.utils.io import atomic_write
@@ -818,7 +819,7 @@ class TaskStore:
             unresolved_blockers: list[int] = []
             for b in current.blocked_by:
                 blocker = next((r for r in doc.tasks if r.id == b), None)
-                if blocker is not None and blocker.status != TaskStatus.COMPLETED:
+                if blocker is not None and not is_task_completed(blocker):
                     unresolved_blockers.append(b)
             if unresolved_blockers:
                 return ClaimBlocked(kind="blocked", by=unresolved_blockers)
