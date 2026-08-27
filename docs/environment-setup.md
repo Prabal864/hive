@@ -107,6 +107,7 @@ MCP tools are also available in Cursor. To enable:
    {
      "mcpServers": {
        "hive_tools": {
+         "type": "stdio",
          "command": "uv",
          "args": ["run", "python", "mcp_server.py", "--stdio"],
          "cwd": "tools"
