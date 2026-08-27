@@ -498,6 +498,12 @@ class GraphSpec(BaseModel):
             if not self.get_node(term):
                 errors.append(f"Terminal node '{term}' not found")
 
+        # Check entry_points reference existing nodes (otherwise get_entry_point()
+        # can hand back a dangling node id that only fails at execution/resume time)
+        for entry_point_name, target in self.entry_points.items():
+            if not self.get_node(target):
+                errors.append(f"Entry point '{entry_point_name}' references missing node '{target}'")
+
         # Suggest at least one terminal node (graphs should have termination points)
         if not self.terminal_nodes:
             warnings.append("Graph has no terminal nodes defined in 'terminal_nodes'. Consider adding a termination point where execution ends.")
