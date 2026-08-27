@@ -101,9 +101,20 @@ This sets up the MCP tools and workflows for building agents.
 
 MCP tools are also available in Cursor. To enable:
 
-1. Open Cursor Settings > Features > MCP
-2. Add your configured MCP servers
-3. Open Agent chat and verify MCP tools are available
+1. Open Cursor Settings (`Cmd+,` / `Ctrl+,`) and navigate to **Customize > MCPs** (or open the Command Palette and run `Open MCP Settings`).
+2. Add the `hive_tools` server configuration:
+   ```json
+   {
+     "mcpServers": {
+       "hive_tools": {
+         "command": "uv",
+         "args": ["run", "python", "mcp_server.py", "--stdio"],
+         "cwd": "tools"
+       }
+     }
+   }
+   ```
+3. Open Agent chat and verify MCP tools are available.
 
 ### 2. Build an Agent
 

@@ -125,24 +125,22 @@ make check    # Verify locally before pushing
 | `tools/pyproject.toml` `[tool.ruff]` | Ruff rules for `tools/` (mirrors core, first-party = `aden_tools`) |
 | `.editorconfig` | Editor-agnostic formatting defaults |
 | `.pre-commit-config.yaml` | Pre-commit hook definitions |
-| `.vscode/settings.json` | VS Code ruff integration |
-| `.vscode/extensions.json` | Recommended VS Code extensions |
 | `.claude/settings.json` | Claude Code post-edit hooks |
 
-The single source of truth for lint rules is the `[tool.ruff]` section in each package's `pyproject.toml`. All other configs (VS Code, pre-commit, Makefile, CI) reference these.
+The single source of truth for lint rules is the `[tool.ruff]` section in each package's `pyproject.toml`. All other configs (pre-commit, Makefile, CI) reference these.
 
 ---
 
 ## FAQ
 
 **Q: Do I need to install anything beyond `uv pip install -e ".[dev]"`?**
-Only if you want pre-commit hooks: `make install-hooks`. Everything else (VS Code settings, editorconfig) works automatically.
+Only if you want pre-commit hooks: `make install-hooks`. Baseline formatting (`.editorconfig`) works automatically.
 
 **Q: Can I use a different formatter (black, autopep8)?**
 No. The project standardizes on ruff for both linting and formatting. Using a different formatter will cause CI failures.
 
 **Q: What if ruff and my editor disagree?**
-The `.vscode/settings.json` is configured to use ruff as the formatter. If you use a different editor, run `make format` before committing, or rely on the pre-commit hook.
+Configure your editor to use ruff as the formatter (see the [VS Code](#vs-code-recommended) setup above). You can also run `make format` before committing, or rely on the pre-commit hook.
 
 **Q: I'm getting lint errors in code I didn't write. Do I need to fix them?**
 Only fix lint errors in files you modified. Don't send drive-by lint fix PRs for unrelated files without coordinating first.
