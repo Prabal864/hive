@@ -101,21 +101,15 @@ This sets up the MCP tools and workflows for building agents.
 
 MCP tools are also available in Cursor. To enable:
 
-1. Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
-2. Run `MCP: Enable` to enable MCP servers
-3. Restart Cursor to load the MCP servers from `.cursor/mcp.json`
-4. Open Agent chat and verify MCP tools are available
+1. Open Cursor Settings > Features > MCP
+2. Add your configured MCP servers
+3. Open Agent chat and verify MCP tools are available
 
 ### 2. Build an Agent
 
 **Claude Code:**
 ```
 Use the files-tools initialize_and_build_agent tool to scaffold a new agent
-```
-
-**Codex CLI:**
-```
-Start Codex in the repo root and use the configured MCP tools
 ```
 
 Follow the prompts to:
